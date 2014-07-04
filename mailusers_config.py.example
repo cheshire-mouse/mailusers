@@ -1,0 +1,10 @@
+
+mysql_config = {
+    'user': 'testuser',
+    'password': 'secret',
+    'host': '127.0.0.1',
+    'database': 'mailboxes',
+    'raise_on_warnings': True,
+}
+
+
