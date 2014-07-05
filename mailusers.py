@@ -181,6 +181,37 @@ def addMailbox(name,domain,password,description,quota,without_confirm):
     else:
         cnx.close()
 
+def deleteMailbox(address,without_confirm):
+    '''
+        delete mailbox from database
+    '''
+    if (not without_confirm and not confirm("Delete mailbox {}? (y/n)".format(address))):
+        logger.info("canceled, exiting")
+        return
+    logger.info("deleting mailbox {} from database".format(address))
+    try:
+        cnx = mysql.connector.connect(**mysql_config)
+        cursor = cnx.cursor()
+        query = ("DELETE FROM users WHERE concat(username,'@',domain) = %s;")
+        values=(address,)
+        cursor.execute(query,values)
+        cnx.commit()
+        if (cursor.rowcount == 0):
+            logger.info("nothing to delete: address {} was not found".format(address))
+            print("nothing to delete: address {} was not found".format(address))
+        cursor.close()
+        cnx.close()
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            logger.error("Something is wrong with your user name or password")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            logger.error("Database does not exists")
+        else:
+            logger.error(err)
+    else:
+        cnx.close()
+
+
 
 logging.basicConfig(level=logging.DEBUG,format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("main")
@@ -190,14 +221,18 @@ parser = argparse.ArgumentParser(description="Dovecot virtual mailboxes managing
         formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("command",choices=['add','delete','list','modify','suspend','resume','addalias','deletealias','listaliases'],
         help="list - print list of existing mailboxes\n"
-            "add - add new mailbox (require at least '--name' option)")
-parser.add_argument("--name","-n",help="name of the mailbox")
+            "add - add new mailbox (requires at least '--name' )\n"
+            "delete - delete mailbox (requires '--address' option")
+parser.add_argument("--address","-a",help="address of the existing mailbox you want to delete or \n"
+        "modify, format is 'username@domain'")
+parser.add_argument("--name","-n",help="new name of the mailbox")
 parser.add_argument("--domain","-d",default=defaults["domain"],help="mailbox domain")
 parser.add_argument("--password","-p",help="mailbox password")
 parser.add_argument("--comment","--description","-c",default=defaults["comment"],help="short description of the mailbox")
 parser.add_argument("--quota","-q",type=int,default=defaults["quota"],help="mailbox max size in bytes")
 parser.add_argument("-y",action='store_true',default=False,help="answer 'yes' for any stupid question")
 args = parser.parse_args();
+
 if (args.command == 'list' ):
     listUsers()
 elif (args.command == 'add' ):
@@ -205,6 +240,12 @@ elif (args.command == 'add' ):
         logger.error("Require at least mailbox name ('--name' option) to create something");
         sys.exit(1);
     addMailbox(args.name,args.domain,args.password,args.comment,args.quota,args.y);
+elif (args.command == 'delete' ):
+    if (args.address == None):
+        logger.error("Require at least mailbox address ('--address' option) to delete something");
+        sys.exit(1);
+    deleteMailbox(args.address,args.y)
+
 logger.info("finish mailusers.py")
 
 
