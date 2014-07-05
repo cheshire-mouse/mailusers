@@ -29,13 +29,10 @@ CREATE TABLE `aliases` (
   UNIQUE KEY `id` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8
 '''
-# toDo: command delete
-# toDo: command modify
-# toDo: command suspend
-# toDo: command resume
 # toDo: command listaliases
 # toDo: command addalias
 # toDo: command deletealias
+# toDo: command modify
 
 import logging
 import argparse
@@ -159,6 +156,7 @@ def addMailbox(name,domain,password,description,quota,without_confirm):
             "".format(name,domain,password_hash,description,humanReadableSize(quota)))
     if (not without_confirm and not confirm("Is it OK? (y/n)") ):
         logger.info("canceled, exiting")
+        print("canceled, exiting")
         return
     logger.info("adding mailbox {}@{} to database".format(name,domain))
     try:
@@ -187,6 +185,7 @@ def deleteMailbox(address,without_confirm):
     '''
     if (not without_confirm and not confirm("Delete mailbox {}? (y/n)".format(address))):
         logger.info("canceled, exiting")
+        print("canceled, exiting")
         return
     logger.info("deleting mailbox {} from database".format(address))
     try:
@@ -211,6 +210,39 @@ def deleteMailbox(address,without_confirm):
     else:
         cnx.close()
 
+def changeMailboxActivity(address,disable):
+    '''
+        suspend/resume mailbox by changing 'active' field in the database 
+    '''
+    active='Y'
+    if (disable):
+        logger.info("suspending mailbox {}".format(address))
+        active='N'
+    else:
+        logger.info("resuming mailbox {}".format(address))
+    try:
+        cnx = mysql.connector.connect(**mysql_config)
+        cursor = cnx.cursor()
+        query = ("UPDATE users SET active = %s "
+            "WHERE concat(username,'@',domain) = %s;")
+        values=(active,address)
+        cursor.execute(query,values)
+        cnx.commit()
+        if (cursor.rowcount == 0):
+            logger.info("nothing to change")
+            print("nothing to change")
+        cursor.close()
+        cnx.close()
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            logger.error("Something is wrong with your user name or password")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            logger.error("Database does not exists")
+        else:
+            logger.error(err)
+    else:
+        cnx.close()
+
 
 
 logging.basicConfig(level=logging.DEBUG,format="%(asctime)s %(levelname)s %(message)s")
@@ -219,10 +251,12 @@ logger = logging.getLogger("main")
 logger.info("start mailusers.py")
 parser = argparse.ArgumentParser(description="Dovecot virtual mailboxes managing tool",
         formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("command",choices=['add','delete','list','modify','suspend','resume','addalias','deletealias','listaliases'],
+parser.add_argument("command",choices=['add','delete','list','modify','disable','enable','addalias','deletealias','listaliases'],
         help="list - print list of existing mailboxes\n"
             "add - add new mailbox (requires at least '--name' )\n"
-            "delete - delete mailbox (requires '--address' option")
+            "delete - delete mailbox (requires '--address' option)\n"
+            "disable - disable mailbox (requires '--address' option)\n"
+            "enable - enable mailbox (requires '--address' option)\n")
 parser.add_argument("--address","-a",help="address of the existing mailbox you want to delete or \n"
         "modify, format is 'username@domain'")
 parser.add_argument("--name","-n",help="new name of the mailbox")
@@ -237,14 +271,20 @@ if (args.command == 'list' ):
     listUsers()
 elif (args.command == 'add' ):
     if (args.name == None):
-        logger.error("Require at least mailbox name ('--name' option) to create something");
+        logger.error("Require at least mailbox name ('--name' option) to create anything");
         sys.exit(1);
     addMailbox(args.name,args.domain,args.password,args.comment,args.quota,args.y);
 elif (args.command == 'delete' ):
     if (args.address == None):
-        logger.error("Require at least mailbox address ('--address' option) to delete something");
+        logger.error("Require at least mailbox address ('--address' option) to delete anything");
         sys.exit(1);
     deleteMailbox(args.address,args.y)
+elif (args.command == 'enable' or args.command == 'disable'):
+    if (args.address == None):
+        logger.error("Require at least mailbox address ('--address' option) to change anything");
+        sys.exit(1);
+    changeMailboxActivity(args.address,args.command == 'disable')
+
 
 logger.info("finish mailusers.py")
 
