@@ -279,7 +279,12 @@ def listAliases():
     print("+--------------------------------+--------------------------------+")
     print("| {:<30} | {:<30} |".format("address (alias)","mail to"))
     print("+--------------------------------+--------------------------------+")
+    address_prev = None
     for (address,mailto) in rows:
+        if (address == address_prev):
+            address = ""
+        else:
+            address_prev = address
         print("| {:<30} | {:<30} |".format(address,mailto))
     print("+--------------------------------+--------------------------------+")
 
@@ -287,8 +292,8 @@ def addAlias(address,mailto,without_confirm):
     '''
         add alias to database
     '''
-    print("Creating alias with the following option:\n\n"
-            "address:\t{0}\nmail to:\t{1}\n"
+    print("Creating alias:\n\n"
+            "{0} -> {1}\n"
             "".format(address,mailto))
     if (not without_confirm and not confirm("Is it OK? (y/n)") ):
         logger.info("canceled, exiting")
@@ -300,20 +305,21 @@ def addAlias(address,mailto,without_confirm):
     values=(address, mailto)
     dbExec(query,values)
 
-def deleteAlias(address,without_confirm):
+def deleteAlias(address,mailto,without_confirm):
     '''
         delete alias from database
     '''
-    if (not without_confirm and not confirm("Delete alias {}? (y/n)".format(address))):
+    if (not without_confirm and 
+            not confirm("Delete alias {} -> {}? (y/n)".format(address,mailto))):
         logger.info("canceled, exiting")
         print("canceled, exiting")
         return
     logger.info("deleting alias {} from database".format(address))
-    query = ("DELETE FROM aliases WHERE address = %s;")
-    values=(address,)
+    query = ("DELETE FROM aliases WHERE address = %s AND goto = %s;")
+    values=(address,mailto)
     if ( dbExec(query,values) == 0 ):
-        logger.info("nothing to delete: alias {} was not found".format(address))
-        print("nothing to delete: alias {} was not found".format(address))
+        logger.info("nothing to delete: alias {} -> {} was not found".format(address,mailto))
+        print("nothing to delete: alias {} -> {} was not found".format(address,mailto))
 
 
 #logging.basicConfig(level=logging.DEBUG,format="%(asctime)s %(levelname)s %(message)s")
@@ -334,8 +340,8 @@ parser.add_argument("command",choices=['add','delete','list','modify',"passwd",'
             "listaliases - list existing aliases\n"
             "addalias - add new alias (requires options '--alias'\n"
             "           and '--mailto')\n"
-            "deletealias - delete existing alias (requires option\n"
-            "'--alias')\n"
+            "deletealias - delete alias (requires options '--alias'\n"
+            "           and '--mailto')\n"
             "")
 parser.add_argument("--address","-a",help="address of the existing mailbox you want to delete or \n"
         "modify, format is 'username@domain'")
@@ -384,10 +390,10 @@ elif (args.command == 'addalias'):
         sys.exit(1);
     addAlias(args.alias,args.mailto,args.y)
 elif (args.command == 'deletealias'):
-    if (args.alias == None):
-        logger.error("Require alias name ('--alias' option) to delete anything");
+    if (args.alias == None or args.mailto == None):
+        logger.error("Require alias name ('--alias' option) and forward address ('--mailto' option)");
         sys.exit(1);
-    deleteAlias(args.alias,args.y)
+    deleteAlias(args.alias,args.mailto,args.y)
 
 logger.info("finish mailusers.py")
 
