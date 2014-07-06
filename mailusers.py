@@ -33,6 +33,7 @@ CREATE TABLE `aliases` (
 # toDo: command addalias
 # toDo: command deletealias
 # toDo: command modify
+# toDo: command passwd
 
 import logging
 import argparse
@@ -109,8 +110,14 @@ def confirm(message):
     else :
         return False
 
-def dbExec(query,values=None):
+def dbExec(query,values=None,returnRows=False):
+    '''
+        executes SQL query
+        set returnRows to True if you expect some rows to be returned (SELECT)
+        set returnRown to False if you need rowcount to be returned (DELETE,UPDATE)
+    '''
     rowcount = 0
+    rows = []
     try:
         cnx = mysql.connector.connect(**mysql_config)
         cursor = cnx.cursor()
@@ -118,8 +125,12 @@ def dbExec(query,values=None):
             cursor.execute(query)
         else:
             cursor.execute(query,values)
-        cnx.commit()
-        rowcount = cursor.rowcount
+        if (returnRows):
+            for row in cursor:
+                rows.append(row)
+        else:
+            cnx.commit()
+            rowcount = cursor.rowcount
         cursor.close()
         cnx.close()
     except mysql.connector.Error as err:
@@ -131,7 +142,10 @@ def dbExec(query,values=None):
             logger.error(err)
     else:
         cnx.close()
-    return rowcount
+    if (returnRows):
+        return rows
+    else:
+        return rowcount
 
 
 
@@ -140,32 +154,15 @@ def listUsers():
         print list of existing mailboxes
     '''
     logger.info("list users")
-    try:
-        cnx = mysql.connector.connect(**mysql_config)
-        cursor = cnx.cursor()
-        query = ("SELECT username, domain, quota_limit_bytes, active, description FROM users;")
-        cursor.execute(query)
-        print("+-------+---------------------------+----------------------+--------------+----------------------------------------------------+")
-        print("| {:^5} | {:^25} | {:^20} | {:^12} | {:<50} |".format("on", "name", "domain", "quota","description"))
-        print("+-------+---------------------------+----------------------+--------------+----------------------------------------------------+")
-        for (username, domain, quota, active, description) in cursor:
-            if (active == 'Y'):
-                active = '+'
-            else:
-                active = ''
-            print("| {:^5} | {:<25} | {:<20} | {:>12} | {:<50} |".format(active, username, domain, humanReadableSize(quota),description))
-        print("+-------+---------------------------+----------------------+--------------+----------------------------------------------------+")
-        cursor.close()
-        cnx.close()
-    except mysql.connector.Error as err:
-        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-            logger.error("Something is wrong with your user name or password")
-        elif err.errno == errorcode.ER_BAD_DB_ERROR:
-            logger.error("Database does not exists")
-        else:
-            logger.error(err)
-    else:
-        cnx.close()
+    query = ("SELECT username, domain, quota_limit_bytes, active, description FROM users;")
+    rows = dbExec(query,returnRows=True)
+    print("+-------+---------------------------+----------------------+--------------+----------------------------------------------------+")
+    print("| {:^5} | {:^25} | {:^20} | {:^12} | {:<50} |".format("state", "name", "domain", "quota","description"))
+    print("+-------+---------------------------+----------------------+--------------+----------------------------------------------------+")
+    for (username, domain, quota, active, description) in rows:
+        status = '' if (active == 'Y') else 'x'
+        print("| {:^5} | {:<25} | {:<20} | {:>12} | {:<50} |".format(status, username, domain, humanReadableSize(quota),description))
+    print("+-------+---------------------------+----------------------+--------------+----------------------------------------------------+")
 
 def addMailbox(name,domain,password,description,quota,without_confirm):
     '''
