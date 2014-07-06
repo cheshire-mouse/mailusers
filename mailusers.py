@@ -29,9 +29,6 @@ CREATE TABLE `aliases` (
   UNIQUE KEY `id` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8
 '''
-# toDo: command modify
-# toDo: command passwd
-
 import logging
 import argparse
 import mysql.connector
@@ -190,7 +187,7 @@ def addMailbox(name,domain,password,description,quota,without_confirm):
     values=(name,domain,password_hash,description,quota)
     dbExec(query,values)
 
-def modifyMailbox(address,name,domain,password,description,quota,without_confirm):
+def modifyMailbox(address,name=None,domain=None,password=None,description=None,quota=None,without_confirm=False):
     '''
         modify mailbox 
     '''
@@ -262,6 +259,15 @@ def changeMailboxActivity(address,disable):
     if ( dbExec(query,values) == 0):
         logger.info("nothing to change")
         print("nothing to change")
+        
+def changeMailboxPassword(address,password):
+    '''
+        change mailbox password
+    '''
+    if (password == None):
+        password = inputPassword()
+    modifyMailbox(address,password=password,without_confirm=True)
+
 
 def listAliases():
     '''
@@ -311,17 +317,18 @@ def deleteAlias(address,without_confirm):
 
 
 #logging.basicConfig(level=logging.DEBUG,format="%(asctime)s %(levelname)s %(message)s")
-logging.basicConfig(level=logging.DEBUG,format="%(levelname)s %(message)s")
+logging.basicConfig(level=logging.WARNING,format="%(levelname)s %(message)s")
 logger = logging.getLogger("main")
 
 logger.info("start mailusers.py")
 parser = argparse.ArgumentParser(description="Dovecot virtual mailboxes managing tool",
         formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("command",choices=['add','delete','list','modify','disable','enable','addalias','deletealias','listaliases'],
+parser.add_argument("command",choices=['add','delete','list','modify',"passwd",'disable','enable','addalias','deletealias','listaliases'],
         help="list - print list of existing mailboxes\n"
             "add - add new mailbox (requires at least '--name' )\n"
             "delete - delete mailbox (requires '--address' option)\n"
             "modify - modify mailbox (requires '--address' option)\n"
+            "passwd - change mailbox password (requires '--address' option)\n"
             "disable - disable mailbox (requires '--address' option)\n"
             "enable - enable mailbox (requires '--address' option)\n"
             "listaliases - list existing aliases\n"
@@ -359,6 +366,11 @@ elif (args.command == 'modify' ):
         logger.error("Require at least mailbox address ('--address' option) to modify anything");
         sys.exit(1);
     modifyMailbox(args.address,args.name,args.domain,args.password,args.comment,args.quota,args.y);
+elif (args.command == 'passwd' ):
+    if (args.address == None):
+        logger.error("Require at least mailbox address ('--address' option) to change password");
+        sys.exit(1);
+    changeMailboxPassword(args.address,args.password);
 elif (args.command == 'enable' or args.command == 'disable'):
     if (args.address == None):
         logger.error("Require at least mailbox address ('--address' option) to change anything");
