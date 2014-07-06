@@ -29,9 +29,6 @@ CREATE TABLE `aliases` (
   UNIQUE KEY `id` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8
 '''
-# toDo: command listaliases
-# toDo: command addalias
-# toDo: command deletealias
 # toDo: command modify
 # toDo: command passwd
 
@@ -154,7 +151,8 @@ def listUsers():
         print list of existing mailboxes
     '''
     logger.info("list users")
-    query = ("SELECT username, domain, quota_limit_bytes, active, description FROM users;")
+    query = ("SELECT username, domain, quota_limit_bytes, active, description "
+            "FROM users ORDER BY domain, username;")
     rows = dbExec(query,returnRows=True)
     print("+-------+---------------------------+----------------------+--------------+----------------------------------------------------+")
     print("| {:^5} | {:^25} | {:^20} | {:^12} | {:<50} |".format("state", "name", "domain", "quota","description"))
@@ -218,6 +216,53 @@ def changeMailboxActivity(address,disable):
         logger.info("nothing to change")
         print("nothing to change")
 
+def listAliases():
+    '''
+        print list of existing aliases
+    '''
+    logger.info("list aliases")
+    query = ("SELECT address, goto FROM aliases ORDER BY address, goto;")
+    rows = dbExec(query,returnRows=True)
+    print("+--------------------------------+--------------------------------+")
+    print("| {:<30} | {:<30} |".format("address (alias)","mail to"))
+    print("+--------------------------------+--------------------------------+")
+    for (address,mailto) in rows:
+        print("| {:<30} | {:<30} |".format(address,mailto))
+    print("+--------------------------------+--------------------------------+")
+
+def addAlias(address,mailto,without_confirm):
+    '''
+        add alias to database
+    '''
+    print("Creating alias with the following option:\n\n"
+            "address:\t{0}\nmail to:\t{1}\n"
+            "".format(address,mailto))
+    if (not without_confirm and not confirm("Is it OK? (y/n)") ):
+        logger.info("canceled, exiting")
+        print("canceled, exiting")
+        return
+    logger.info("adding alias {} to database".format(address))
+    query = ("INSERT INTO aliases (address, goto ) "
+            " VALUES (%s,%s);")
+    values=(address, mailto)
+    dbExec(query,values)
+
+def deleteAlias(address,without_confirm):
+    '''
+        delete alias from database
+    '''
+    if (not without_confirm and not confirm("Delete alias {}? (y/n)".format(address))):
+        logger.info("canceled, exiting")
+        print("canceled, exiting")
+        return
+    logger.info("deleting alias {} from database".format(address))
+    query = ("DELETE FROM aliases WHERE address = %s;")
+    values=(address,)
+    if ( dbExec(query,values) == 0 ):
+        logger.info("nothing to delete: alias {} was not found".format(address))
+        print("nothing to delete: alias {} was not found".format(address))
+
+
 logging.basicConfig(level=logging.DEBUG,format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("main")
 
@@ -229,7 +274,13 @@ parser.add_argument("command",choices=['add','delete','list','modify','disable',
             "add - add new mailbox (requires at least '--name' )\n"
             "delete - delete mailbox (requires '--address' option)\n"
             "disable - disable mailbox (requires '--address' option)\n"
-            "enable - enable mailbox (requires '--address' option)\n")
+            "enable - enable mailbox (requires '--address' option)\n"
+            "listaliases - list existing aliases\n"
+            "addalias - add new alias (requires options '--alias'\n"
+            "           and '--mailto')\n"
+            "deletealias - delete existing alias (requires option\n"
+            "'--alias')\n"
+            "")
 parser.add_argument("--address","-a",help="address of the existing mailbox you want to delete or \n"
         "modify, format is 'username@domain'")
 parser.add_argument("--name","-n",help="new name of the mailbox")
@@ -238,6 +289,8 @@ parser.add_argument("--password","-p",help="mailbox password")
 parser.add_argument("--comment","--description","-c",default=defaults["comment"],help="short description of the mailbox")
 parser.add_argument("--quota","-q",type=int,default=defaults["quota"],help="mailbox max size in bytes")
 parser.add_argument("-y",action='store_true',default=False,help="answer 'yes' for any stupid question")
+parser.add_argument("--alias",help="new alias name")
+parser.add_argument("--mailto",help="forward address for new alias")
 args = parser.parse_args();
 
 if (args.command == 'list' ):
@@ -257,7 +310,18 @@ elif (args.command == 'enable' or args.command == 'disable'):
         logger.error("Require at least mailbox address ('--address' option) to change anything");
         sys.exit(1);
     changeMailboxActivity(args.address,args.command == 'disable')
-
+elif (args.command == 'listaliases' ):
+    listAliases()
+elif (args.command == 'addalias'):
+    if (args.alias == None or args.mailto == None):
+        logger.error("Require alias name ('--alias' option) and forward address ('--mailto' option)");
+        sys.exit(1);
+    addAlias(args.alias,args.mailto,args.y)
+elif (args.command == 'deletealias'):
+    if (args.alias == None):
+        logger.error("Require alias name ('--alias' option) to delete anything");
+        sys.exit(1);
+    deleteAlias(args.alias,args.y)
 
 logger.info("finish mailusers.py")
 
