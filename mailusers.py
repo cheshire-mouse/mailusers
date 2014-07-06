@@ -109,6 +109,31 @@ def confirm(message):
     else :
         return False
 
+def dbExec(query,values=None):
+    rowcount = 0
+    try:
+        cnx = mysql.connector.connect(**mysql_config)
+        cursor = cnx.cursor()
+        if (values == None):
+            cursor.execute(query)
+        else:
+            cursor.execute(query,values)
+        cnx.commit()
+        rowcount = cursor.rowcount
+        cursor.close()
+        cnx.close()
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            logger.error("Something is wrong with your user name or password")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            logger.error("Database does not exists")
+        else:
+            logger.error(err)
+    else:
+        cnx.close()
+    return rowcount
+
+
 
 def listUsers():
     '''
@@ -159,25 +184,10 @@ def addMailbox(name,domain,password,description,quota,without_confirm):
         print("canceled, exiting")
         return
     logger.info("adding mailbox {}@{} to database".format(name,domain))
-    try:
-        cnx = mysql.connector.connect(**mysql_config)
-        cursor = cnx.cursor()
-        query = ("INSERT INTO users (username, domain, password, description, quota_limit_bytes) "
-                " VALUES (%s,%s,%s,%s,%s);")
-        values=(name,domain,password_hash,description,quota)
-        cursor.execute(query,values)
-        cnx.commit()
-        cursor.close()
-        cnx.close()
-    except mysql.connector.Error as err:
-        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-            logger.error("Something is wrong with your user name or password")
-        elif err.errno == errorcode.ER_BAD_DB_ERROR:
-            logger.error("Database does not exists")
-        else:
-            logger.error(err)
-    else:
-        cnx.close()
+    query = ("INSERT INTO users (username, domain, password, description, quota_limit_bytes) "
+            " VALUES (%s,%s,%s,%s,%s);")
+    values=(name,domain,password_hash,description,quota)
+    dbExec(query,values)
 
 def deleteMailbox(address,without_confirm):
     '''
@@ -188,27 +198,11 @@ def deleteMailbox(address,without_confirm):
         print("canceled, exiting")
         return
     logger.info("deleting mailbox {} from database".format(address))
-    try:
-        cnx = mysql.connector.connect(**mysql_config)
-        cursor = cnx.cursor()
-        query = ("DELETE FROM users WHERE concat(username,'@',domain) = %s;")
-        values=(address,)
-        cursor.execute(query,values)
-        cnx.commit()
-        if (cursor.rowcount == 0):
-            logger.info("nothing to delete: address {} was not found".format(address))
-            print("nothing to delete: address {} was not found".format(address))
-        cursor.close()
-        cnx.close()
-    except mysql.connector.Error as err:
-        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-            logger.error("Something is wrong with your user name or password")
-        elif err.errno == errorcode.ER_BAD_DB_ERROR:
-            logger.error("Database does not exists")
-        else:
-            logger.error(err)
-    else:
-        cnx.close()
+    query = ("DELETE FROM users WHERE concat(username,'@',domain) = %s;")
+    values=(address,)
+    if ( dbExec(query,values) == 0 ):
+        logger.info("nothing to delete: address {} was not found".format(address))
+        print("nothing to delete: address {} was not found".format(address))
 
 def changeMailboxActivity(address,disable):
     '''
@@ -220,30 +214,12 @@ def changeMailboxActivity(address,disable):
         active='N'
     else:
         logger.info("resuming mailbox {}".format(address))
-    try:
-        cnx = mysql.connector.connect(**mysql_config)
-        cursor = cnx.cursor()
-        query = ("UPDATE users SET active = %s "
-            "WHERE concat(username,'@',domain) = %s;")
-        values=(active,address)
-        cursor.execute(query,values)
-        cnx.commit()
-        if (cursor.rowcount == 0):
-            logger.info("nothing to change")
-            print("nothing to change")
-        cursor.close()
-        cnx.close()
-    except mysql.connector.Error as err:
-        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-            logger.error("Something is wrong with your user name or password")
-        elif err.errno == errorcode.ER_BAD_DB_ERROR:
-            logger.error("Database does not exists")
-        else:
-            logger.error(err)
-    else:
-        cnx.close()
-
-
+    query = ("UPDATE users SET active = %s "
+        "WHERE concat(username,'@',domain) = %s;")
+    values=(active,address)
+    if ( dbExec(query,values) == 0):
+        logger.info("nothing to change")
+        print("nothing to change")
 
 logging.basicConfig(level=logging.DEBUG,format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("main")
