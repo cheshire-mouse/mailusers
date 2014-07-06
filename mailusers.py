@@ -72,12 +72,12 @@ def generateHash(value):
         this code belongs to mr Guest: http://pastebin.com/xD4qWzBG
         thanks, dude
     '''
+    if (value == None):
+        return None
 
     salt = ''.join([chr(random.randrange(0, 256)) for x in range(0,8)])
-     
     bValue = value.encode('utf-8')
     bSalt = salt.encode('utf-8')
-
     return '{SSHA512}' + (base64.b64encode(hashlib.sha512(bValue+bSalt).digest()+bSalt)).decode('utf-8') 
 
 def inputPassword():
@@ -166,6 +166,12 @@ def addMailbox(name,domain,password,description,quota,without_confirm):
     '''
         add mailbox to database
     '''
+    if (domain == None):
+        domain = defaults["domain"]
+    if (quota == None):
+        quota = defaults["quota"]
+    if (description == None):
+        description = defaults["comment"]
     if (password == None):
         password = inputPassword()
     password_hash = generateHash(password)
@@ -183,6 +189,47 @@ def addMailbox(name,domain,password,description,quota,without_confirm):
             " VALUES (%s,%s,%s,%s,%s);")
     values=(name,domain,password_hash,description,quota)
     dbExec(query,values)
+
+def modifyMailbox(address,name,domain,password,description,quota,without_confirm):
+    '''
+        modify mailbox 
+    '''
+    if (name != None or domain != None):
+        print("\nWARNING! Changing mailbox name or domain will result in "
+                "creating new EMPTY mailbox directory, while all messages"
+                " will stay in the old one.\n")
+    query = ("UPDATE users SET ")
+    first = True
+    values = {"address" : address}
+    for (name,column,value) in [
+        ("name","username",name),
+        ("domain","domain",domain),
+        ("password","password",generateHash(password)),
+        ("comment","description", description),
+        ("quota","quota_limit_bytes",quota)]:
+        if (value == None):
+            continue
+        if ( not first ):
+            query += ", "
+        first = False
+        query += "{} = %({})s".format(column,name)
+        values[name] = value
+        print("{:<15} {}".format(name,value))
+    if (first):
+        logger.info("nothing to change")
+        print("nothing to change")
+        return
+    del password
+    query += " WHERE concat(username,'@',domain) = %(address)s; "
+    if (not without_confirm and not confirm("Is it OK? (y/n)") ):
+        logger.info("canceled, exiting")
+        print("canceled, exiting")
+        return
+    logger.info("changing mailbox {}".format(address))
+    logger.debug(query)
+    if ( dbExec(query,values) == 0):
+        logger.warning("address {} was not found".format(address))
+
 
 def deleteMailbox(address,without_confirm):
     '''
@@ -263,7 +310,8 @@ def deleteAlias(address,without_confirm):
         print("nothing to delete: alias {} was not found".format(address))
 
 
-logging.basicConfig(level=logging.DEBUG,format="%(asctime)s %(levelname)s %(message)s")
+#logging.basicConfig(level=logging.DEBUG,format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=logging.DEBUG,format="%(levelname)s %(message)s")
 logger = logging.getLogger("main")
 
 logger.info("start mailusers.py")
@@ -273,6 +321,7 @@ parser.add_argument("command",choices=['add','delete','list','modify','disable',
         help="list - print list of existing mailboxes\n"
             "add - add new mailbox (requires at least '--name' )\n"
             "delete - delete mailbox (requires '--address' option)\n"
+            "modify - modify mailbox (requires '--address' option)\n"
             "disable - disable mailbox (requires '--address' option)\n"
             "enable - enable mailbox (requires '--address' option)\n"
             "listaliases - list existing aliases\n"
@@ -284,10 +333,10 @@ parser.add_argument("command",choices=['add','delete','list','modify','disable',
 parser.add_argument("--address","-a",help="address of the existing mailbox you want to delete or \n"
         "modify, format is 'username@domain'")
 parser.add_argument("--name","-n",help="new name of the mailbox")
-parser.add_argument("--domain","-d",default=defaults["domain"],help="mailbox domain")
+parser.add_argument("--domain","-d",help="mailbox domain")
 parser.add_argument("--password","-p",help="mailbox password")
-parser.add_argument("--comment","--description","-c",default=defaults["comment"],help="short description of the mailbox")
-parser.add_argument("--quota","-q",type=int,default=defaults["quota"],help="mailbox max size in bytes")
+parser.add_argument("--comment","--description","-c",help="short description of the mailbox")
+parser.add_argument("--quota","-q",type=int,help="mailbox max size in bytes")
 parser.add_argument("-y",action='store_true',default=False,help="answer 'yes' for any stupid question")
 parser.add_argument("--alias",help="new alias name")
 parser.add_argument("--mailto",help="forward address for new alias")
@@ -305,6 +354,11 @@ elif (args.command == 'delete' ):
         logger.error("Require at least mailbox address ('--address' option) to delete anything");
         sys.exit(1);
     deleteMailbox(args.address,args.y)
+elif (args.command == 'modify' ):
+    if (args.address == None):
+        logger.error("Require at least mailbox address ('--address' option) to modify anything");
+        sys.exit(1);
+    modifyMailbox(args.address,args.name,args.domain,args.password,args.comment,args.quota,args.y);
 elif (args.command == 'enable' or args.command == 'disable'):
     if (args.address == None):
         logger.error("Require at least mailbox address ('--address' option) to change anything");
