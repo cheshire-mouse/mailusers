@@ -28,6 +28,17 @@ CREATE TABLE `aliases` (
   `goto` varchar(255) NOT NULL,
   UNIQUE KEY `id` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8
+
+CREATE TABLE `lists` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `listname` varchar(128) NOT NULL,
+  `domain` varchar(128) NOT NULL,
+  `alias` varchar(255) NOT NULL,
+  `goto` varchar(255) NOT NULL,
+  UNIQUE KEY `id` (`id`),
+  UNIQUE KEY `goto` (`goto`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 |
+
 '''
 import logging
 import argparse
@@ -321,6 +332,67 @@ def deleteAlias(address,mailto,without_confirm):
         logger.info("nothing to delete: alias {} -> {} was not found".format(address,mailto))
         print("nothing to delete: alias {} -> {} was not found".format(address,mailto))
 
+def listMaillists():
+    '''
+        print list of existing maillists
+    '''
+    logger.info("list maillists")
+    query = ("SELECT concat(listname,'@',domain) as maillist "
+            "FROM lists "
+            "   GROUP BY listname, domain "
+            "   ORDER BY domain, listname;")
+    rows = dbExec(query,returnRows=True)
+    print("+----------------------------------------------------+")
+    print("| {:^50} |".format("list name"))
+    print("+----------------------------------------------------+")
+    for (maillist,) in rows:
+        print("| {:<50} |".format(maillist))
+    print("+----------------------------------------------------+")
+
+def addMaillist(name,domain,without_confirm):
+    '''
+        add maillist to database
+    '''
+    if (domain == None):
+        domain = defaults["domain"]
+    print("Creating maillist {0}@{1}\n\n"
+            "".format(name,domain))
+    if (not without_confirm and not confirm("Is it OK? (y/n)") ):
+        logger.info("canceled, exiting")
+        print("canceled, exiting")
+        return
+    logger.info("adding maillist {}@{} to database".format(name,domain))
+    query = ("INSERT INTO lists (listname, domain, alias, goto) "
+            " VALUES ")
+    query_tail = ""
+    values = ()
+    for suffix in ["","-admin","-bounces","-confirm","-join","-leave","-owner","-request","-subscribe","-unsubscribe"]:
+        alias_val = name + suffix + "@" + domain
+        alias_val_goto = name + suffix + "@lists." + domain
+        values += (name,domain,alias_val,alias_val_goto)
+        if ( query_tail != "" ):
+            query_tail += ","
+        query_tail += "(%s,%s,%s,%s)"
+    query += query_tail + ";"
+    dbExec(query,values)
+
+
+def deleteMaillist(address,without_confirm):
+    '''
+        delete maillist from database
+    '''
+    if (not without_confirm and not confirm("Delete maillist {}? (y/n)".format(address))):
+        logger.info("canceled, exiting")
+        print("canceled, exiting")
+        return
+    logger.info("deleting maillist {} from database".format(address))
+    query = ("DELETE FROM lists WHERE concat(listname,'@',domain) = %s;")
+    values=(address,)
+    if ( dbExec(query,values) == 0 ):
+        logger.info("nothing to delete: address {} was not found".format(address))
+        print("nothing to delete: address {} was not found".format(address))
+
+
 
 #logging.basicConfig(level=logging.DEBUG,format="%(asctime)s %(levelname)s %(message)s")
 logging.basicConfig(level=logging.WARNING,format="%(levelname)s %(message)s")
@@ -329,7 +401,8 @@ logger = logging.getLogger("main")
 logger.info("start mailusers.py")
 parser = argparse.ArgumentParser(description="Dovecot virtual mailboxes managing tool",
         formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("command",choices=['add','delete','list','modify',"passwd",'disable','enable','addalias','deletealias','listaliases'],
+parser.add_argument("command",choices=['add','delete','list','modify',"passwd",'disable','enable',
+        'addalias','deletealias','listaliases','addlist','deletelist','listlists'],
         help="list - print list of existing mailboxes\n"
             "add - add new mailbox (requires at least '--name' )\n"
             "delete - delete mailbox (requires '--address' option)\n"
@@ -342,10 +415,13 @@ parser.add_argument("command",choices=['add','delete','list','modify',"passwd",'
             "           and '--mailto')\n"
             "deletealias - delete alias (requires options '--alias'\n"
             "           and '--mailto')\n"
+            "listlists - list existing maillists\n"
+            "addlist - add maillist (requires option '--name')\n"
+            "deletelist - delete maillist(requires '--address' option)\n"
             "")
 parser.add_argument("--address","-a",help="address of the existing mailbox you want to delete or \n"
         "modify, format is 'username@domain'")
-parser.add_argument("--name","-n",help="new name of the mailbox")
+parser.add_argument("--name","-n",help="new name of the mailbox/maillist")
 parser.add_argument("--domain","-d",help="mailbox domain")
 parser.add_argument("--password","-p",help="mailbox password")
 parser.add_argument("--comment","--description","-c",help="short description of the mailbox")
@@ -394,6 +470,19 @@ elif (args.command == 'deletealias'):
         logger.error("Require alias name ('--alias' option) and forward address ('--mailto' option)");
         sys.exit(1);
     deleteAlias(args.alias,args.mailto,args.y)
+elif (args.command == 'listlists' ):
+    listMaillists()
+elif (args.command == 'addlist' ):
+    if (args.name == None):
+        logger.error("Require at least maillist name ('--name' option) to create anything");
+        sys.exit(1);
+    addMaillist(args.name,args.domain,args.y);
+elif (args.command == 'deletelist' ):
+    if (args.address == None):
+        logger.error("Require at least maillist address ('--address' option) to delete anything");
+        sys.exit(1);
+    deleteMaillist(args.address,args.y)
+
 
 logger.info("finish mailusers.py")
 
